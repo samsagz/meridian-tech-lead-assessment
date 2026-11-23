@@ -89,7 +89,7 @@ flowchart TB
 | Capability | Regional, built once | Per country | How the country variation is handled |
 |---|---|---|---|
 | Quote and purchase screens | `web-quote-ui`, `advisor-portal` | — | Texts, consent versions and currency in configuration; feature flags per country (TD-10) |
-| Channel API | `channel-bff`, `quote-xapi` | API Manager client ID | Country in the path, checked against the token (D-15) |
+| Channel API | `channel-bff`, `quote-xapi` | API Manager client ID | Country from the token in `channel-bff`, and in the path of `quote-xapi` (D-15) |
 | Product rules and price | Quote Process API, grid store | Rating in each org; grid content | About 80% common; taxes, mandatory coverages, documents and consent texts in configuration (`SALESFORCE_CONSTRAINTS.md:8`) |
 | Access to Salesforce, data and secrets | — | `sf-policy-sapi-{country}` and the org; PostgreSQL database and Key Vault | — |
 | Issuance | `issuance-worker` | Queue per country | Documents come from the product configuration of each org |
@@ -123,8 +123,8 @@ sequenceDiagram
   participant X as quote-xapi
   participant P as Quote Process API
   participant S as sf-policy-sapi-{country}
-  C->>B: POST /v1/{country}/quotes with token
-  B->>B: Validate the token, and check that the path country matches it
+  C->>B: POST /v1/quotes with token
+  B->>B: Validate the token and take the country from it, or check the advisor countries
   B->>X: Client ID of the country and user context
   X->>P: Uses only the slots and queue of that country
   alt Combination in the grid
@@ -161,15 +161,15 @@ sequenceDiagram
 
 | Caller | Token | How the country is set | Rules |
 |---|---|---|---|
-| Customer | Customer realm: `sub`, `ctry`, `sf_account_id` (`CURRENT_STATE.md:94`) | `ctry`; a different path country gets 403 | The customer comes only from the validated token, never from headers or the body (`CustomerContext.java:6-7`) |
-| Advisor | Workforce realm with MFA: `sub`, `countries`, `roles` (`CURRENT_STATE.md:95`) | The path country must be in `countries` | The role must allow quoting; the customer is explicit in the request; the audit log keeps the advisor, the customer and the country |
+| Customer | Customer realm: `sub`, `ctry`, `sf_account_id` (`CURRENT_STATE.md:94`) | `ctry`; the BFF ignores any country sent by the caller | The customer comes only from the validated token, never from headers or the body (`CustomerContext.java:6-7`) |
+| Advisor | Workforce realm with MFA: `sub`, `countries`, `roles` (`CURRENT_STATE.md:95`) | The requested country must be in `countries`, or the answer is 403 | The role must allow quoting; the customer is explicit in the request; the audit log keeps the advisor, the customer and the country |
 | `channel-bff` → `quote-xapi` | Client credentials with the client ID of the request country, plus the user context from the validated token (D-17) | `quote-xapi` rejects a path country that does not match the client ID | Token exchange (RFC 8693) is a later step, with the Identity team |
 
 How we meet C5:
 - Personal data stays in the database of its country. Secrets live only in Key Vault, read with managed identities (this closes TD-11). Logs use an allowlist of fields and IDs, never personal data.
 - People access databases and logs by role and by country.
 - Quote drafts are deleted after a retention period per country agreed with Legal (TD-08).
-- Every pipeline runs negative tests per country: a CO token that asks for an MX quote gets 403.
+- Every pipeline runs negative tests per country: a CO advisor who asks for MX, or a call to `quote-xapi` with the MX path and the CO client ID, gets 403.
 - Regional processing of the three countries needs a documented basis with Legal (AS-06). If Legal rejects it, `channel-bff` and the Process API move to one deployment per country, with the same code (ADR-0001).
 
 ## 7. Transition without a big bang
@@ -188,7 +188,7 @@ For the internal team and Nimbus. Gates and thresholds are in `ENGINEERING_STAND
 
 | Area | Rule | How we enforce it |
 |---|---|---|
-| API design | Plural nouns in kebab-case; path `/v{major}/{country}/{resource}`. A breaking change creates a new major version, and the previous one stays at least 6 months with `Deprecation` and `Sunset` headers | OpenAPI lint in the pipeline; consumer-provider contract tests (TD-05) |
+| API design | Plural nouns in kebab-case. Experience and Process APIs use `/v{major}/{country}/{resource}`; the BFF takes the country from the token. A breaking change creates a new major version, and the previous one stays at least 6 months with `Deprecation` and `Sunset` headers | OpenAPI lint in the pipeline; consumer-provider contract tests (TD-05) |
 | Error model | RFC 9457 problem details with `code` and `correlationId`, as the BFF already does (`channel-quote-api.yaml:60`). No stack traces or personal data in errors | OpenAPI lint; contract tests |
 | Country configuration | Versioned configuration per country, with a schema. Country code only behind an extension point. No country conditionals in shared code | Schema validation and tests of the three country configurations in every build; a static rule fails the build on country conditionals |
 | Resilience defaults | A timeout on every outbound call, shorter than the caller's; the retry rules of A2; circuit breaker per dependency and country; rating tables cached | Configuration lint (A2); performance gate on Salesforce calls per quote (A1); fault-injection gate (ADR-0001) |
