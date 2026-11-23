@@ -1,0 +1,442 @@
+openapi: 3.0.3
+info:
+  title: Quote Experience API (quote-xapi)
+  version: 3.0.0
+  license:
+    name: Proprietary, internal use only
+    url: https://api.meridian.example/terms
+  description: |
+    Regional Experience API that the Direct Digital Channel uses to quote. One
+    deployment serves MX, CO and CL (ADR-0001). The consumer is `channel-bff`,
+    for the customer web journey and the advisor portal. This version covers
+    Home Essentials (BR-01); the current products stay on v2 until they move.
+
+    **Country.** A path segment that must match the country of the client
+    token, or the answer is 403 `COUNTRY_MISMATCH`. Limits, queue and circuit
+    breakers are per country (`ARCHITECTURE.md` §5).
+
+    **Versioning.** Major version in the path. v3 exists because the country
+    moved from the body and query of v2 to the path, which breaks v2 clients.
+    Additive changes, such as a new product schema, raise the minor version.
+    A deprecated major version sends `Deprecation` and `Sunset` and stays at
+    least 6 months; the version catalog is in `INTERFACES_AND_GOVERNANCE.md`
+    §4. Lint and breaking-change checks run in every pipeline
+    (`ENGINEERING_STANDARDS.md` §2).
+
+    **Rating tables.** Each quote returns the rating-table version, which the
+    channel shows to the customer, and its publication time. The price is
+    valid until publication plus 24 hours (`SALESFORCE_CONSTRAINTS.md:25`).
+
+    **Security.** OAuth 2.0 client credentials, one `channel-bff` client per
+    country. `channel-bff` builds the user context headers from the validated
+    access token, never from caller input (`ARCHITECTURE.md` §6), and the API
+    Manager accepts them only from the `channel-bff` clients.
+
+    **Personal data.** Answers are bands, without free text. The Process API
+    maps the postal code to a rating zone, and logs keep only the zone. Each
+    quote is recorded in a schema of the Process API in the country database
+    (`pg-channel-{country}`), inside the country data boundary (C5).
+servers:
+  - url: https://api.meridian.example/quote-xapi
+    description: Production, through the API Manager
+tags:
+  - name: Quotes
+    description: Create and retrieve quotes
+security:
+  - apiManagerClient: []
+paths:
+  /v3/{country}/quotes:
+    parameters:
+      - $ref: '#/components/parameters/Country'
+    post:
+      tags: [Quotes]
+      operationId: createQuote
+      summary: Create a quote
+      description: |
+        The price comes from the price grid of the country. If the combination
+        is missing, or the grid of the day is still loading after 05:00 UTC,
+        the Process API uses live rating: one attempt, 1.2 s timeout
+        (ADR-0002). If the combination is missing and the org is down, the
+        answer is 503 `PRICE_UNAVAILABLE` in milliseconds, and `channel-bff`
+        saves the draft.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/ActorType'
+        - $ref: '#/components/parameters/ActorId'
+        - $ref: '#/components/parameters/CustomerAccount'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuoteRequest'
+            example:
+              product: HOME_ESSENTIALS
+              answers: {postalCode: '06700', dwellingType: APARTMENT, occupancy: TENANT, builtAreaBand: FROM_61_TO_120, contentsValueBand: BAND_2}
+      responses:
+        '201':
+          description: Quote created. The same key with the same body within 24 hours returns the same quote.
+          headers:
+            Location:
+              description: URL of the new quote
+              schema:
+                type: string
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+            Deprecation:
+              $ref: '#/components/headers/Deprecation'
+            Sunset:
+              $ref: '#/components/headers/Sunset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Quote'
+              example:
+                quoteId: 7d4f2c1e-9b0a-4e57-8c11-3a2f6b9d0e45
+                country: MX
+                product: HOME_ESSENTIALS
+                status: ACTIVE
+                answers: {postalCode: '06700', dwellingType: APARTMENT, occupancy: TENANT, builtAreaBand: FROM_61_TO_120, contentsValueBand: BAND_2}
+                premium: {currency: MXN, net: '3150.00', taxes: [{code: IVA, amount: '504.00'}], total: '3654.00'}
+                coverages:
+                  - {code: CONTENTS_FIRE, mandatory: true, limit: '250000.00'}
+                  - {code: CIVIL_LIABILITY, mandatory: true, limit: '500000.00'}
+                ratingTableVersion: MX-HOME-2027.04.20
+                ratingTablesPublishedAt: '2027-04-20T05:00:00Z'
+                validUntil: '2027-04-21T05:00:00Z'
+                createdAt: '2027-04-20T16:12:08Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v3/{country}/quotes/{quoteId}:
+    parameters:
+      - $ref: '#/components/parameters/Country'
+      - $ref: '#/components/parameters/QuoteId'
+    get:
+      tags: [Quotes]
+      operationId: getQuote
+      summary: Retrieve a quote
+      description: |
+        Reads the quote from the country database, so it works while the org
+        is down. The purchase uses it to check the price and `validUntil`
+        before payment. A quote of another customer returns 404, as an unknown
+        ID does, so IDs cannot be probed. After `validUntil` the status is
+        `EXPIRED`; after the retention period of the country, 404.
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/ActorType'
+        - $ref: '#/components/parameters/ActorId'
+        - $ref: '#/components/parameters/CustomerAccount'
+      responses:
+        '200':
+          description: The quote
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+            Deprecation:
+              $ref: '#/components/headers/Deprecation'
+            Sunset:
+              $ref: '#/components/headers/Sunset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Quote'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  securitySchemes:
+    apiManagerClient:
+      type: oauth2
+      description: One `channel-bff` client per country. Its token carries only the scope of that country, so the API Manager can limit or revoke one country alone.
+      flows:
+        clientCredentials:
+          tokenUrl: https://id.meridian.example/oauth2/token
+          scopes:
+            quote:MX: Quote in Mexico
+            quote:CO: Quote in Colombia
+            quote:CL: Quote in Chile
+  parameters:
+    Country:
+      name: country
+      in: path
+      required: true
+      description: ISO 3166-1 alpha-2. Must match the scope of the client token.
+      schema:
+        type: string
+        enum: [MX, CO, CL]
+    QuoteId:
+      name: quoteId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Kept for 24 hours. The same key with a different body returns 409.
+      schema:
+        type: string
+        format: uuid
+    CorrelationId:
+      name: X-Correlation-Id
+      in: header
+      required: false
+      description: Sent by `channel-bff`; created by `quote-xapi` when it is missing.
+      schema:
+        type: string
+        format: uuid
+    ActorType:
+      name: X-Actor-Type
+      in: header
+      required: true
+      description: From the issuer of the validated token (customer or workforce realm).
+      schema:
+        type: string
+        enum: [CUSTOMER, ADVISOR]
+    ActorId:
+      name: X-Actor-Id
+      in: header
+      required: true
+      description: The `sub` claim of the validated token. Kept in the audit log.
+      schema:
+        type: string
+        maxLength: 64
+    CustomerAccount:
+      name: X-Customer-Account
+      in: header
+      required: true
+      description: |
+        Customer: the `sf_account_id` claim. Advisor: the customer being served,
+        after `channel-bff` checked the country against `countries` and the
+        role (`CURRENT_STATE.md:94-95`).
+      schema:
+        type: string
+        maxLength: 32
+  headers:
+    CorrelationId:
+      description: Same value as the request, or the one `quote-xapi` created
+      schema:
+        type: string
+        format: uuid
+    RetryAfter:
+      description: Seconds before the country accepts this request again
+      schema:
+        type: integer
+        minimum: 1
+    Deprecation:
+      description: Sent only when this major version is deprecated
+      schema:
+        type: string
+    Sunset:
+      description: HTTP date when this major version is retired (RFC 8594), at least 6 months after deprecation
+      schema:
+        type: string
+  schemas:
+    QuoteRequest:
+      description: One schema per product. A new product adds a schema, which is a minor version.
+      oneOf:
+        - $ref: '#/components/schemas/HomeEssentialsQuoteRequest'
+      discriminator:
+        propertyName: product
+        mapping:
+          HOME_ESSENTIALS: '#/components/schemas/HomeEssentialsQuoteRequest'
+    HomeEssentialsQuoteRequest:
+      type: object
+      additionalProperties: false
+      required: [product, answers]
+      properties:
+        product: {type: string, enum: [HOME_ESSENTIALS]}
+        answers: {$ref: '#/components/schemas/HomeEssentialsAnswers'}
+    HomeEssentialsAnswers:
+      type: object
+      description: The five questions of BR-01, as bands (AS-01, AS-20)
+      additionalProperties: false
+      required: [postalCode, dwellingType, occupancy, builtAreaBand, contentsValueBand]
+      properties:
+        postalCode:
+          type: string
+          pattern: '^[0-9]{5,7}$'
+          description: MX 5 digits, CO 6, CL 7. The Process API checks the format of the country.
+        dwellingType: {type: string, enum: [HOUSE, APARTMENT]}
+        occupancy: {type: string, enum: [OWNER, TENANT]}
+        builtAreaBand:
+          type: string
+          description: Square metres
+          enum: [UP_TO_60, FROM_61_TO_120, FROM_121_TO_200, OVER_200]
+        contentsValueBand:
+          type: string
+          description: Band limits are in the product configuration of each country, in local currency
+          enum: [BAND_1, BAND_2, BAND_3, BAND_4, BAND_5]
+    Quote:
+      type: object
+      required: [quoteId, country, product, status, answers, premium, coverages, ratingTableVersion, ratingTablesPublishedAt, validUntil, createdAt]
+      properties:
+        quoteId: {type: string, format: uuid}
+        country: {type: string, enum: [MX, CO, CL]}
+        product: {type: string, enum: [HOME_ESSENTIALS]}
+        status: {type: string, enum: [ACTIVE, EXPIRED, PURCHASED]}
+        answers:
+          oneOf:
+            - $ref: '#/components/schemas/HomeEssentialsAnswers'
+        premium:
+          $ref: '#/components/schemas/Premium'
+        coverages:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/Coverage'
+        ratingTableVersion:
+          type: string
+          description: Rating tables used for the price. The channel shows it to the customer.
+        ratingTablesPublishedAt: {type: string, format: date-time}
+        validUntil:
+          type: string
+          format: date-time
+          description: Publication time of the rating tables plus 24 hours
+        createdAt: {type: string, format: date-time}
+    Premium:
+      type: object
+      description: Annual premium, as decimal strings
+      required: [currency, net, taxes, total]
+      properties:
+        currency:
+          type: string
+          description: ISO 4217. CLP has no decimals.
+          enum: [MXN, COP, CLP]
+        net: {$ref: '#/components/schemas/Amount'}
+        taxes:
+          type: array
+          items:
+            type: object
+            required: [code, amount]
+            properties:
+              code: {type: string}
+              amount: {$ref: '#/components/schemas/Amount'}
+        total: {$ref: '#/components/schemas/Amount'}
+    Coverage:
+      type: object
+      description: Texts come from the configuration of each country, by code
+      required: [code, mandatory, limit]
+      properties:
+        code: {type: string}
+        mandatory:
+          type: boolean
+          description: Mandatory coverages differ by country (`SALESFORCE_CONSTRAINTS.md:8`)
+        limit: {$ref: '#/components/schemas/Amount'}
+    Amount:
+      type: string
+      pattern: '^[0-9]+(\.[0-9]{1,2})?$'
+    Problem:
+      type: object
+      description: RFC 9457 problem details. No stack traces or personal data.
+      required: [type, title, status, code, correlationId]
+      properties:
+        type: {type: string, format: uri}
+        title: {type: string}
+        status: {type: integer}
+        detail: {type: string}
+        instance: {type: string}
+        code:
+          type: string
+          enum: [INVALID_REQUEST, UNAUTHENTICATED, COUNTRY_MISMATCH, QUOTE_NOT_FOUND, IDEMPOTENCY_CONFLICT, ANSWERS_OUT_OF_RANGE, RATE_LIMITED, QUEUE_FULL, PRICE_UNAVAILABLE, DEPENDENCY_UNAVAILABLE]
+        correlationId: {type: string, format: uuid}
+        errors:
+          type: array
+          description: Field errors for 400 and 422. `pointer` is a JSON Pointer to the field.
+          items:
+            type: object
+            required: [pointer, detail]
+            properties:
+              pointer: {type: string}
+              detail: {type: string}
+  responses:
+    BadRequest:
+      description: '`INVALID_REQUEST`: the body or a header does not follow the schema'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unauthorized:
+      description: '`UNAUTHENTICATED`: missing or invalid client token'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Forbidden:
+      description: '`COUNTRY_MISMATCH`: the path country is not the country of the client token'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFound:
+      description: '`QUOTE_NOT_FOUND`: unknown ID, a quote of another customer, or past retention'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Conflict:
+      description: '`IDEMPOTENCY_CONFLICT`: the key was used with a different body'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unprocessable:
+      description: '`ANSWERS_OUT_OF_RANGE`: an answer is not valid in this country, such as a postal code of another country'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    TooManyRequests:
+      description: '`RATE_LIMITED`: rate limit of this country client at the API Manager'
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    ServiceUnavailable:
+      description: |
+        `QUEUE_FULL`: the in-flight limit and queue of this country are full;
+        other countries are not affected. `PRICE_UNAVAILABLE`: the combination
+        is not in the grid and the org is down. `DEPENDENCY_UNAVAILABLE`: no
+        answer from the Process API in 3 s, or the country database is down.
+        `channel-bff` does not retry inside the same customer request (A2).
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://api.meridian.example/problems/price-unavailable
+            title: Price not available now
+            status: 503
+            detail: Save the answers and try again later
+            code: PRICE_UNAVAILABLE
+            correlationId: 5a1e9c3d-7b20-4f6a-8d4e-2c9b0f1a6e77

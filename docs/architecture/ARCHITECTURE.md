@@ -68,6 +68,7 @@ flowchart TB
   BFF -- "client ID of the token country" --> XAPI
   XAPI --> PAPI --> SAPI --> ORG
   PAPI --> GRID
+  PAPI -- "quote record, own schema" --> DBMX & DBCO & DBCL
   BRK -- "payment confirmed" --> IW
   IW -- "issue policy" --> XAPI
   BFF & IW -. "Payments and Communications Process APIs" .-> IP
@@ -113,6 +114,8 @@ Path: `channel-bff` → `quote-xapi` → quote Process API → `sf-policy-sapi-{
 **C6 at month-end.** The request rate has margin: at the MX peak, 6.6 quotes/s (`channel-metrics.csv 16:20Z MX`, 1,987 ÷ 300 s) × 1.31 calls ≈ 8.7 req/s, 22% of the agreed 40. The daily budget has less: 157,745 × 1.31 ≈ 207,000 calls, 83% of the MX budget (ADR-0002). Home Essentials adds less than 1%, even with live rating (500 × 3 × 1.3 ≈ 2,000 calls), so the risk is in the current MX journeys. Controls: A1, the rate limit per consumer, the alerts of `SLOS.md` §4 and the plan per org (`INTERFACES_AND_GOVERNANCE.md`).
 
 **Price grid.** A persistent key-value store next to the Process API, shared by all replicas. The key is the country, the product, the rating-table version and the answer bands (AS-01); the value is the premium with its taxes. Live prices are written into it, so the same answers do not call Salesforce twice. Only the six rating tables per product stay in memory. The first option is the MuleSoft Object Store; if the MuleSoft deployment or its limits do not fit the grid, it moves to Azure Database for PostgreSQL (AS-07). If the store fails, the Process API uses live rating.
+
+**Quote record.** The Process API records each quote, with its rating-table version and `validUntil`, in its own schema of the country database, with its own credentials. The `GET` of `quote-xapi` reads it there, also while the org is down, and the purchase uses it to check the price (`quote-experience-api.yaml`).
 
 **Org down (≈ 3% of the month).** Home Essentials quotes come from the grid. The current products fail fast, and the customer can save the draft. Payment happens in the session, and issuance waits in the queue of the country (ADR-0002).
 

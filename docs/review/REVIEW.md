@@ -40,7 +40,7 @@ The Medium and Low findings can go in follow-up PRs, with an issue for each one 
 
 ## 3. Refactoring proposal
 
-Target path (`ARCHITECTURE.md` §4, ADR-0002): `web-quote-ui` with the MX configuration → `channel-bff` `POST /v1/quotes` with `product: HOME_ESSENTIALS` → `QuoteExperienceClient` (timeouts, circuit breaker, API Manager credentials, correlation ID) → `quote-xapi` `POST /v1/MX/quotes` → quote Process API (price grid or live rating) → `sf-policy-sapi-mx` → MX org.
+Target path (`ARCHITECTURE.md` §4, ADR-0002): `web-quote-ui` with the MX configuration → `channel-bff` `POST /v1/quotes` with `product: HOME_ESSENTIALS` → `QuoteExperienceClient` (timeouts, circuit breaker, API Manager credentials, correlation ID) → `quote-xapi` `POST /v3/MX/quotes` → quote Process API (price grid or live rating) → `sf-policy-sapi-mx` → MX org.
 
 The quote needs no personal data. If the purchase step needs to prefill customer data, it reads only the fields that the screen shows, through the same API-led path.
 
