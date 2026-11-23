@@ -179,7 +179,7 @@ First we close the P1 actions of INC-0907, so we do not build on the same risk. 
 | When | What moves |
 |---|---|
 | Dec 2026 – Mar 2027 | INC-0907 P1 actions; grid commitment and MuleSoft loan before 15 Dec; pipeline terms in the Nimbus renewal on 31 Jan (A7b). Process API with Home Essentials (part of TD-01); MX in `channel-bff` and `web-quote-ui` only for Home Essentials (part of TD-03, TD-04); `pg-channel-mx`; TD-05; TD-10. `quote-papi-mx` and the `mx-quote-bff` issuance move to the API-led path (A8, TD-02) |
-| Apr – Jun 2027 | Launches: MX 30 Apr, CO 31 May, CL 30 Jun, each behind a country flag. If MX does not pass the UAT gates by 15 Mar, we propose to the sponsor that MX launches with CO on 31 May, without going back to the Nimbus stack (D-04) |
+| Apr – Jun 2027 | Launches by MX 30 Apr, CO 31 May and CL 30 Jun, each behind a country flag and live before the month-end freeze (`ROADMAP.md` §4). If MX does not pass the UAT gates by 15 Mar, we propose to the sponsor that MX launches with CO on 31 May, without going back to the Nimbus stack (D-04) |
 | H2 2027 | The current journeys move one at a time. `web-quote-ui-mx`, `mx-quote-bff`, `quote-papi-mx` and `sql-quote-mx` are retired when they have no traffic |
 
 ## 8. Guidelines and standards we enforce
