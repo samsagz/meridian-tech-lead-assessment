@@ -44,7 +44,7 @@ The paging thresholds use the 99.5% of C1 for every journey, not the interim tar
 
 | Alert | Condition (per country and journey) | Action | 30 Sep replay |
 |---|---|---|---|
-| Fast burn | Bad ratio ≥ 14.4 × 0.5% = 7.2% over 1 h and over the last 5 min | Page | MX 15:50; CO and CL 16:40 (`channel-metrics.csv`, `quote-xapi` 5xx only) |
+| Fast burn | Bad ratio ≥ 14.4 × 0.5% = 7.2% over 1 h and over the last 5 min | Page | MX 15:50; CO and CL 16:35 (`channel-metrics.csv`, `quote-xapi` 5xx only) |
 | Slow burn | Bad ratio ≥ 6 × 0.5% = 3% over 6 h and over the last 30 min | Page | — |
 | Salesforce request rate | The channel sends more than 32 req/s to an org for 5 min, which is 80% of the agreed 40 (`SALESFORCE_CONSTRAINTS.md:19`) | Page | MX 15:15 |
 | Org allocation | The org reaches 75% of its daily allocation, or the channel reaches 90% of its daily budget | Page, and notify Payments and the Salesforce platform team | MX 16:15, 40 min before the Payments pause (`shared-metrics.csv`) |

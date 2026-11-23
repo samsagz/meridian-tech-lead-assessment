@@ -60,7 +60,7 @@ A is simpler, but quotes stay at the org's ≈ 97%. B moves the dependency on Sa
 ## Consequences
 
 - **Becomes easier:** quoting Home during an org outage; C6 at month-end; one integration path for the three countries.
-- **Becomes harder:** a Q1 dependency on the Salesforce platform team; the grid needs versions, verification and an alert when it is late; the customer sees more states (issuance pending, refund); one more hop than direct access.
+- **Becomes harder:** a Q1 dependency on the Salesforce platform team; the grid needs versions, verification and an alert when it is late; the customer sees more states (issuance pending, refund); one more hop than direct access; the current products stay below C1 until they adopt the grid (interim targets in [`SLOS.md` §2](../operations/SLOS.md#2-slos)), and we decide their grid after 30 days of Home data.
 - **To revisit, and when:** after the December spike (grid size and load time); after 30 days of Home data (grid hit rate, issuance in ≤ 3 min); when a current product adopts the grid.
 
 ## Action items

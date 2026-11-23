@@ -43,7 +43,7 @@ gantt
 |---|---|---|
 | 09-29 23:40 | Nimbus deploys 3.8.0 from its own CI, with the cache off, 4 attempts and no backoff | `TIMELINE.md:8`; `quote-papi-mx.log:2` |
 | 14:00 | Before any impact, each MX quote already makes 8.3 Salesforce calls (≈ 1.3 on a normal day) and the MX org is at 59.0% (normal peak 45.8–48.6%). No alert fires | `channel-metrics.csv 14:00Z` (5,021 ÷ 605); `shared-metrics.csv 14:00Z`; `sf-api-usage-daily.csv` |
-| 15:15–15:27 | The channel goes above 40 req/s on the MX org, the Salesforce p95 goes above the 5 s timeout, retries start, and the first MX `504` appears | `channel-metrics.csv 15:15Z–15:30Z`; `quote-xapi.log:6` |
+| 15:15–15:30 | The channel goes above 40 req/s on the MX org, the Salesforce p95 goes above the 5 s timeout, retries start, and the first MX `504` appears | `channel-metrics.csv 15:15Z–15:30Z`; `quote-xapi.log:6` |
 | 15:34–15:46 | `quote-xapi` reaches its in-flight limit and rejects the first CL and CO requests with `503 QUEUE_FULL`. MX holds 61–62 of the 64 slots per replica. The on-call sees errors in the three countries | `quote-xapi.log:7,10-13`; chat 15:41, 15:46 |
 | 15:52 | SEV3 is declared, assuming that CO is the most affected country | chat 15:52 |
 | 16:00–16:21 | The team rules out the key rotation 401s and the database. The vendor says the change "should help, not hurt". `quote-xapi` is scaled from 2 to 4 replicas | `quote-xapi.log:16-23`; chat 16:02–16:18 |
@@ -118,7 +118,7 @@ flowchart TD
 |---|---|
 | The CO contact center reported quickly (15:41), and the DBA ruled out the database with evidence in 7 min | The SEV3, and the assumption that CO was the origin. The vendor's "should help" was accepted without data |
 | The Identity team reported the effect of the rotation openly (16:06) | The rotation was not stopped during the incident |
-| At 16:58 the Salesforce platform team shared the consumption per integration, and this data showed the cause | The scale-out raised the Salesforce load from 75 to 96 req/s and the org from 75.6% to 85.8%, and this triggered the payments pause |
+| At 16:58 the Salesforce platform team shared the consumption per integration, and this data showed the cause | The scale-out raised the Salesforce load from 75 to 96 req/s and the MX errors from 22% to 33%, and it brought the payments pause a few minutes forward (85% at 16:55; ≈ 17:00 at the previous rate) |
 | The rollback took 5 min and the cache started warm | Nobody used the per-route log (15:44), and there are no dashboards per country |
 
 ## 5. Action items
