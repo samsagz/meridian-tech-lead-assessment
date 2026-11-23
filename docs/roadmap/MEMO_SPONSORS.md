@@ -7,7 +7,7 @@
 
 - Customers can quote and buy in **Mexico by 26 April, Colombia by 26 May and Chile by 25 June 2027**; advisors start one week earlier. We go live a few days before your dates because the last two days of each month are the busiest, and we make no changes then.
 - A quote in five questions or less, and payment in the same session.
-- Most policies arrive in under three minutes; every policy arrives within 24 hours, or the customer gets a refund.
+- Most policies arrive in under three minutes. Every paid policy is issued within 24 hours; otherwise a person issues it or we refund the customer.
 - Quotes keep working when Salesforce is down (about 3% of each month), because prices are calculated in advance every morning.
 
 ## Trade-offs we made

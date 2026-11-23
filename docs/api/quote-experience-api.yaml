@@ -273,7 +273,7 @@ components:
         answers: {$ref: '#/components/schemas/HomeEssentialsAnswers'}
     HomeEssentialsAnswers:
       type: object
-      description: The five questions of BR-01, as bands (AS-01, AS-20)
+      description: The five questions of BR-01, as bands (assumptions AS-01 and AS-20 in ASSUMPTIONS.md)
       additionalProperties: false
       required: [postalCode, dwellingType, occupancy, builtAreaBand, contentsValueBand]
       properties:
@@ -425,7 +425,7 @@ components:
         other countries are not affected. `PRICE_UNAVAILABLE`: the combination
         is not in the grid and the org is down. `DEPENDENCY_UNAVAILABLE`: no
         answer from the Process API in 3 s, or the country database is down.
-        `channel-bff` does not retry inside the same customer request (A2).
+        `channel-bff` does not retry inside the same customer request (retry standard, INC-0907 action A2).
       headers:
         Retry-After:
           $ref: '#/components/headers/RetryAfter'

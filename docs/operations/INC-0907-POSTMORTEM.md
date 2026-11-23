@@ -123,7 +123,7 @@ flowchart TD
 
 ## 5. Action items
 
-**P1** before the next month-end peak · **P2** within the quarter · **P3** roadmap.
+**P1** before the next month-end peak, or with an interim control until then · **P2** within the quarter · **P3** roadmap.
 
 | # | Action | Owner | Priority | How we verify it works |
 |---|---|---|---|---|
@@ -131,12 +131,12 @@ flowchart TD
 | A2 | Retry standard: no retry on timeout, at most 1 retry on fast failures with backoff and jitter, a retry budget of ≤ 10%, and a deadline shorter than the caller's timeout | Technical Lead; all teams | P1 | Configuration lint in the pipeline; with fault injection (Salesforce at 6 s), calls per quote stay ≤ 2 |
 | A3 | Per-country bulkheads in `quote-xapi`, a circuit breaker per route, and an outbound timeout aligned to the BFF's 4 s | Integration engineer | P1 | With 30 s of latency injected in MX, CO and CL keep p95 < 2.5 s and get zero `QUEUE_FULL` |
 | A4 | Salesforce consumption alerts per integration user and org: > 32 req/s for 5 min; 24-h budget at 50/75/90%; org ≥ 75% notifies the channel and Payments | Salesforce platform team; Technical Lead | P1 | In a replay of 30 Sep, the budget alert fires hours before the impact, the rate alert by 15:15 and the org alert at 16:15 |
-| A5 | SLO alerts per country and journey, measured at the BFF that serves the country, with timeouts included (`SLOS.md`) | Technical Lead | P1 | In a replay of 30 Sep, MX pages by 15:50 |
+| A5 | SLO alerts per country and journey, measured at the BFF that serves the country, with timeouts included ([`SLOS.md`](SLOS.md)) | Technical Lead | P1 | In a replay of 30 Sep, MX pages by 15:50 |
 | A6 | Change freeze on the last two days of each month, including shared dependencies and key rotations | Technical Lead; change management; Identity team | P1 | The pipelines block production deployments on those days |
 | A7a | While A7b is pending, every Nimbus release to production in MX needs Technical Lead approval and declares configuration changes and calls per quote | Technical Lead; Nimbus | P1 | No release goes out without a recorded approval |
 | A7b | Nimbus deploys through Meridian pipelines with the same gates, and its deployment credential is revoked; both become terms of the 31 Jan 2027 renewal (C8) | Technical Lead; vendor management | P2 | 100% of MX deployments come from Meridian pipelines |
 | A8 | `quote-papi-mx` reaches Salesforce through `sf-policy-sapi-mx`, with rate limiting per consumer (C4) | Nimbus; Salesforce platform team | P2 | Zero direct calls from the channel to the MX org |
 | A9 | Incident playbook with severity examples (a quote degradation in several countries is at least SEV2; stopped payments are SEV1), an incident commander rotation, and a checklist for the first 15 minutes (recent changes, saturation per route, usage of shared dependencies) | Director of Digital Channels; Technical Lead | P2 | In a game day, the incident is declared within 15 min with the right severity |
-| A10 | Protocol with Payments and the Salesforce platform team: when the org reaches 75%, the channel reduces its traffic first, before Payments pauses | Technical Lead; Payments TL; Salesforce platform team | P2 | Tabletop exercise; protocol recorded in `INTERFACES_AND_GOVERNANCE.md` |
+| A10 | Protocol with Payments and the Salesforce platform team: when the org reaches 75%, the channel reduces its traffic first, before Payments pauses | Technical Lead; Payments TL; Salesforce platform team | P2 | Tabletop exercise; protocol recorded in [`INTERFACES_AND_GOVERNANCE.md` §3](../architecture/INTERFACES_AND_GOVERNANCE.md#3-salesforce-api-consumption-per-org) |
 | A11 | Reconcile the "fresh prices" request with the 24-hour rule; any change to caching needs Product Owner approval | Product Owner; MX pricing team | P1 | Decision recorded and linked from A1 |
 | — | **Latent risks** (they did not cause this incident): move the funnel report out of the primary database; publish the IdP keys before using them | Data & Analytics (report); Identity team (keys) | P3 | No reports run on the primary; the next rotation has zero 401s |

@@ -1,4 +1,4 @@
-# Reusable pipeline for the Direct Digital Channel (Azure Pipelines).
+# Reusable pipeline for the Direct Digital Channel (Azure Pipelines; code in Azure DevOps, assumption AS-15).
 # A BFF, an Experience API or a Process API uses it from commit to production in MX, CO and CL.
 # Gates and thresholds: docs/engineering/ENGINEERING_STANDARDS.md §2. Rollout rules: docs/operations/SLOS.md §5.
 # The ci/ scripts come from the golden-path templates; each one stands for the tool named in its step.
@@ -10,10 +10,10 @@
 #
 # Checks configured on the environments in Azure DevOps (not in this file):
 #   dc-prod          approval by the Technical Lead or a delegated code owner; required template;
-#                    change freeze on the last two days of the month (A6); error budget per country in
-#                    targetCountries (SLOS.md §3)
+#                    change freeze on the last two days of the month (INC-0907 action A6); error budget of the country,
+#                    for single-country components only (shared ones keep the flags off, SLOS.md §3)
 #   dc-release-xx    approval by the Product Owner; required template; change freeze; error budget of country xx
-# Service connections use workload identity federation, so no deployment secret is stored (TD-06).
+# Service connections use workload identity federation, so no deployment secret is stored (tech debt TD-06).
 
 parameters:
   - name: serviceName
@@ -66,14 +66,14 @@ stages:
             - script: ./ci/mutation.sh --changed-only --min-score 60
               displayName: Mutation score of changed code
               continueOnError: ${{ not(parameters.enforceMutation) }}
-          - script: ./ci/static-analysis.sh --new-blocker-max 0 --architecture-rules
+          - script: ./ci/static-analysis.sh --new-blocker-max 0 --new-critical-max 0 --architecture-rules
             displayName: Static analysis and the rules of ARCHITECTURE.md §8
           - script: ./ci/security-scan.sh --sast --sca --license-allowlist --secrets
             displayName: SAST, dependency, license and secret scanning
           - script: ./ci/api-gate.sh --lint --breaking-against last-release
             displayName: OpenAPI lint and breaking-change check
           - script: ./ci/resilience-lint.sh
-            displayName: Timeout and retry lint (A2)
+            displayName: Timeout and retry lint (retry standard of action A2)
           - script: ./ci/pact.sh publish --version $(Build.SourceVersion) --branch $(Build.SourceBranchName)
             displayName: Publish consumer contracts
           - script: ./ci/package.sh --runtime ${{ parameters.runtime }} --sbom --sign --scan-critical-max 0
@@ -144,7 +144,7 @@ stages:
           - script: >
               ./ci/load-test.sh --profile month-end --countries $(targetCountries)
               --p95-ms-max 2500 --error-rate-max 0.5 --sf-calls-per-quote-max baseline+20%
-            displayName: Load test at the month-end profile (C2) and Salesforce calls per quote (A1)
+            displayName: Load test at the month-end profile (C2) and Salesforce calls per quote (action A1)
           - script: ./ci/resilience-gate.sh --countries $(targetCountries) --nightly-max-age-days 7
             displayName: Fault injection for this change, or a passed nightly run (C1)
           - script: ./ci/dast.sh --env uat --high-max 0
@@ -175,7 +175,7 @@ stages:
             routeTraffic:
               steps:
                 - checkout: self
-                # container: revision weights in Container Apps; mule: runtime or API Manager split, or blue-green (AS-16)
+                # container: revision weights in Container Apps; mule: runtime or API Manager split, or blue-green (assumption AS-16)
                 - ${{ each step in parameters.trafficSteps }}:
                   - task: AzureCLI@2
                     displayName: Move ${{ step }}% of the traffic to the new version
@@ -206,7 +206,7 @@ stages:
                   - script: ./ci/release-tag.sh --version $(Build.SourceVersion) --keep-previous-hours 24
                     displayName: Tag the release and keep the previous version for 24 h
 
-  # 5. Release by country: the flags of this change are turned on one country at a time (TD-10, AS-17)
+  # 5. Release by country: the flags of this change are turned on one country at a time (TD-10; assumption AS-17)
   - ${{ if ne(length(parameters.countryFlags), 0) }}:
     - ${{ each country in parameters.releaseOrder }}:
       - ${{ if containsValue(parameters.countries, country) }}:

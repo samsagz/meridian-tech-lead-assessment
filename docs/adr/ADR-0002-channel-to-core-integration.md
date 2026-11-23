@@ -5,7 +5,7 @@
 | Status | Proposed |
 | Date | 2026-11-22 |
 | Deciders | Technical Lead (Direct Digital Channel), Salesforce platform team lead, Payments Integration lead, Architecture office |
-| Related | C1, C2, C4, C6; ADR-0001; `SLOS.md`; INC-0907 actions A1, A2, A8; AS-01 to AS-03, AS-07 |
+| Related | C1, C2, C4, C6; [ADR-0001](ADR-0001-regional-reuse-model.md); [`SLOS.md`](../operations/SLOS.md); [INC-0907 actions](../operations/INC-0907-POSTMORTEM.md#5-action-items) A1 (rating-table cache), A2 (retry standard) and A8 (`quote-papi-mx` through the System API); [assumptions](../../ASSUMPTIONS.md) AS-01 to AS-03 (price grid and issuance) and AS-07 (grid store) |
 
 ## Context
 
@@ -29,7 +29,7 @@
 |---|---|---|---|
 | Complexity | Low: the CO and CL pattern (`CURRENT_STATE.md:81`) | Medium: daily grid load, versions, issuance queue | Low now; high to revert later |
 | Cost | Base | Grid storage and a daily batch in Salesforce | Lowest at first |
-| Availability and isolation | Quotes follow the org (≈ 97%) | Home quotes need the org only for missing combinations and during the 05:00–06:00 UTC load (`SLOS.md` §2) | Same as A, without rate limiting per consumer (INC-0907) |
+| Availability and isolation | Quotes follow the org (≈ 97%) | Home quotes need the org only for missing combinations and during the 05:00–06:00 UTC load ([`SLOS.md` §2](../operations/SLOS.md#2-slos)) | Same as A, without rate limiting per consumer (INC-0907) |
 | Salesforce consumption | ≈ 1.3 calls per quote. With the 24–28 Sep rate, MX on 30 Sep would make 157,745 × 1.31 ≈ 207,000 calls: 83% of its budget (`sf-api-usage-daily.csv`) | Home: a few bulk calls per day (`SALESFORCE_CONSTRAINTS.md:35`), almost none per quote | No control per consumer |
 | Latency | One rating call (p95 1.1 s) | A grid lookup, without Salesforce | Same as A |
 | Security and privacy | Credentials per consumer at the System API | Same as A | Salesforce credentials in the channel; needs an ADR and Security approval |
@@ -48,8 +48,8 @@ Option B for Home Essentials. Option A for the current products until they adopt
 | Home price grid | Computed in Salesforce after 05:00 UTC, exported by the System API in bulk calls (AS-01, AS-02) and kept in a store next to the Process API (AS-07). After 05:00 we do not serve the previous version. The grid loads in segments, the most frequent first (the capital city when there is no history), with a target of 06:00 UTC |
 | Live rating | For missing combinations and current products: one attempt with a ≈ 1.2 s timeout, no retry on timeout, at most one retry on fast failures, and a circuit breaker per country (A2). A retry after a timeout does not fit in C2: 1.2 s + 1.1 s = 2.3 s before the other hops. For Home Essentials, the live price is written into the grid |
 | Org down, no price | Fail fast, save the draft and offer to resume through Communications, with a legal basis or consent (C5) |
-| Purchase and issuance | Payment in the session. While the org is up, we validate the issuance data before payment (AS-03); when it is down, we skip this check. Issuance is asynchronous, with a queue per country, an idempotency key and backoff (`ARCHITECTURE.md` §2). A case not issued in 24 h goes to an exception queue with an owner, for manual issuance or refund |
-| Consumption control | Rate limit per consumer and country at each System API, below 40 req/s; alerts in `SLOS.md` §4 |
+| Purchase and issuance | Payment in the session. While the org is up, we validate the issuance data before payment (AS-03); when it is down, we skip this check. Issuance is asynchronous, with a queue per country, an idempotency key and backoff ([`ARCHITECTURE.md` §2](../architecture/ARCHITECTURE.md#2-containers-c4-level-2)). A case not issued in 24 h goes to an exception queue with an owner, for manual issuance or refund |
+| Consumption control | Rate limit per consumer and country at each System API, below 40 req/s; alerts in [`SLOS.md` §4](../operations/SLOS.md#4-alerting) |
 
 If the Salesforce platform team cannot commit to the grid before 15 Dec 2026, plan B of AS-02 applies. If the cell lacks capacity, we drop the load order first, and second we stop writing live prices into the grid.
 
