@@ -61,10 +61,10 @@ Shared components run as one regional deployment, configured per country and wit
 |---|---|---|
 | Path to production | Every change, including Nimbus changes, goes through Meridian pipelines (C7). Until then, each Nimbus release to MX needs Technical Lead approval | A7a, A7b |
 | Before production | A performance test with a budget of Salesforce calls per quote, which fails above the baseline + 20%, and a lint of the retry configuration | A1, A2 |
-| Canary | 5% → 25% → 100% of the traffic. Shared components go to the three countries at the same time; single-country components (such as `quote-papi-mx`) go only to their country. Each step lasts until every country has enough traffic to compare, and CL takes the longest | — |
+| Progressive traffic shift | 5% → 25% → 100% of the traffic. Shared components go to the three countries at the same time; single-country components (such as `quote-papi-mx`) go only to their country. Each step lasts until every country has enough traffic to compare, and CL takes the longest | — |
 | Observed, per country | Bad ratio and p95 at the BFF, Salesforce calls per quote, and requests per second per org | §1 |
 | Automatic rollback | If any country passes the fast-burn threshold, has a p95 ≥ 2.5 s or makes more calls per quote than the baseline + 20%, we redeploy the previous version in every country | A1 |
-| Kill switch | Feature flags per country turn off a feature in one country without a deployment | TD-10 |
+| Flags per country | A new feature is turned on one country at a time, after Product Owner approval. A flag also turns a feature off in one country without a deployment | TD-10, `ENGINEERING_STANDARDS.md` §2 |
 | Freeze | The last two days of each month, and any country whose budget is exhausted | A6, §3 |
 
 The cost of this choice is that a failure in one country rolls back the shared component in the three countries. With per-country flags, the other two countries can keep the new feature.

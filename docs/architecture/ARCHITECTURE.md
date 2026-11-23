@@ -152,7 +152,7 @@ sequenceDiagram
 | System API | Rate limit per consumer, below 40 req/s | ADR-0002 |
 | Data | Database, connection pool and Key Vault per country | ADR-0001 |
 | Issuance | Queue per country; an MX backlog does not delay CO or CL | ADR-0002 |
-| Release | Canary with metrics per country, automatic rollback, flags per country | `SLOS.md` §5 |
+| Release | Progressive traffic shift with metrics per country, automatic rollback, flags per country | `SLOS.md` §5 |
 | Proof | Fault-injection gate in UAT: Salesforce slow in one country with month-end load; the other two keep p95 < 2.5 s | ADR-0001 |
 
 **Disaster recovery.** Active-passive: each country database has a read replica in the approved DR region (`SCENARIO.md:25`), with infrastructure code and artifacts ready. RTO 1 h and RPO 5 min are our own targets, because the material gives none; a failover moves the three countries, and we test it twice a year outside month-end. Salesforce outages are covered by ADR-0002, and MuleSoft outages by the DR of the integration platform.

@@ -1,0 +1,250 @@
+# Reusable pipeline for the Direct Digital Channel (Azure Pipelines).
+# A BFF, an Experience API or a Process API uses it from commit to production in MX, CO and CL.
+# Gates and thresholds: docs/engineering/ENGINEERING_STANDARDS.md §2. Rollout rules: docs/operations/SLOS.md §5.
+# The ci/ scripts come from the golden-path templates; each one stands for the tool named in its step.
+#
+# How a service uses it, with the templates repository declared as a resource:
+#   extends:
+#     template: pipeline-template.yml@templates
+#     parameters: { serviceName: channel-bff, runtime: container, countryFlags: [home-essentials-quote] }
+#
+# Checks configured on the environments in Azure DevOps (not in this file):
+#   dc-prod          approval by the Technical Lead or a delegated code owner; required template;
+#                    change freeze on the last two days of the month (A6); error budget per country in
+#                    targetCountries (SLOS.md §3)
+#   dc-release-xx    approval by the Product Owner; required template; change freeze; error budget of country xx
+# Service connections use workload identity federation, so no deployment secret is stored (TD-06).
+
+parameters:
+  - name: serviceName
+    type: string
+  - name: runtime                # container: Java or TypeScript on Container Apps; mule: Experience or Process API
+    type: string
+    values: [container, mule]
+  - name: countries              # shared components: the three countries; single-country components: one
+    type: object
+    default: [MX, CO, CL]
+  - name: trafficSteps           # progressive traffic shift in production, in % of the traffic
+    type: object
+    default: [5, 25, 100]
+  - name: minRequestsPerStep     # each country needs this many requests on the new version before the next step
+    type: number
+    default: 300
+  - name: countryFlags           # new features in this change, turned on one country at a time after the deploy
+    type: object
+    default: []
+  - name: releaseOrder           # set by the Product Owner; Home Essentials goes MX, CO, CL (ROADMAP.md §4)
+    type: object
+    default: [MX, CO, CL]
+  - name: releaseObserveMinutes  # each country keeps its SLO this long before the next country starts
+    type: number
+    default: 1440
+  - name: enforceMutation        # false in Q1 2027 (report only); true from Q2 2027
+    type: boolean
+    default: false
+
+variables:
+  targetCountries: ${{ join(',', parameters.countries) }}
+
+stages:
+  # 1. Every pull request and every merge to main
+  - stage: Build
+    jobs:
+      - job: Verify
+        pool: { vmImage: ubuntu-latest }
+        steps:
+          - checkout: self
+            fetchDepth: 0        # full history for changed-line coverage and the breaking-change check
+          - script: ./ci/build.sh --runtime ${{ parameters.runtime }} --test
+            displayName: Build, unit and component tests (MUnit for mule)
+          - ${{ each country in parameters.countries }}:
+            - script: ./ci/startup-check.sh --country ${{ country }}
+              displayName: Startup and readiness with the ${{ country }} configuration
+          - script: ./ci/coverage-gate.sh --changed-lines-min 80 --no-decrease
+            displayName: Coverage of new and changed lines
+          - ${{ if eq(parameters.runtime, 'container') }}:
+            - script: ./ci/mutation.sh --changed-only --min-score 60
+              displayName: Mutation score of changed code
+              continueOnError: ${{ not(parameters.enforceMutation) }}
+          - script: ./ci/static-analysis.sh --new-blocker-max 0 --architecture-rules
+            displayName: Static analysis and the rules of ARCHITECTURE.md §8
+          - script: ./ci/security-scan.sh --sast --sca --secrets
+            displayName: SAST, dependency and secret scanning
+          - script: ./ci/api-gate.sh --lint --breaking-against last-release
+            displayName: OpenAPI lint and breaking-change check
+          - script: ./ci/resilience-lint.sh
+            displayName: Timeout and retry lint (A2)
+          - script: ./ci/pact.sh publish --version $(Build.SourceVersion) --branch $(Build.SourceBranchName)
+            displayName: Publish consumer contracts
+          - script: ./ci/package.sh --runtime ${{ parameters.runtime }} --sbom --sign --scan-critical-max 0
+            displayName: Package, container and IaC scan, SBOM and signature
+            condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+          - publish: dist
+            artifact: release
+            condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+
+  # 2. Development: all country configurations at once
+  - stage: Dev
+    dependsOn: Build
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: Deploy
+        environment: dc-dev
+        pool: { vmImage: ubuntu-latest }
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                - script: ./ci/pact.sh can-i-deploy --to dev
+                  displayName: Contracts are compatible with dev
+                - task: AzureCLI@2
+                  displayName: Deploy ${{ parameters.serviceName }} to dev
+                  inputs:
+                    azureSubscription: sc-digital-channel-dev
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: ./ci/deploy.sh --runtime ${{ parameters.runtime }} --env dev --traffic 100
+                - ${{ each country in parameters.countries }}:
+                  - script: ./ci/smoke.sh --env dev --country ${{ country }} --negative-identity-tests
+                    displayName: Smoke and negative identity tests in ${{ country }} (ARCHITECTURE.md §6)
+                - script: ./ci/pact.sh verify-provider --env dev
+                  displayName: Verify the contracts of the consumers
+
+  # 3. UAT: the non-functional gates of C1 and C2
+  - stage: UAT
+    dependsOn: Dev
+    jobs:
+      - deployment: Deploy
+        environment: dc-uat
+        pool: { vmImage: ubuntu-latest }
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                - script: ./ci/pact.sh can-i-deploy --to uat
+                  displayName: Contracts are compatible with UAT
+                - task: AzureCLI@2
+                  displayName: Deploy ${{ parameters.serviceName }} to UAT
+                  inputs:
+                    azureSubscription: sc-digital-channel-uat
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: ./ci/deploy.sh --runtime ${{ parameters.runtime }} --env uat --traffic 100
+                - ${{ each country in parameters.countries }}:
+                  - script: ./ci/e2e-smoke.sh --env uat --country ${{ country }}
+                    displayName: End-to-end smoke of quote and buy in ${{ country }}
+      - job: NonFunctional
+        dependsOn: Deploy
+        timeoutInMinutes: 180
+        pool: { vmImage: ubuntu-latest }
+        steps:
+          - checkout: self
+          - script: >
+              ./ci/load-test.sh --profile month-end --countries $(targetCountries)
+              --p95-ms-max 2500 --error-rate-max 0.5 --sf-calls-per-quote-max baseline+20%
+            displayName: Load test at the month-end profile (C2) and Salesforce calls per quote (A1)
+          - script: ./ci/resilience-gate.sh --countries $(targetCountries) --nightly-max-age-days 7
+            displayName: Fault injection for this change, or a passed nightly run (C1)
+          - script: ./ci/dast.sh --env uat --high-max 0
+            displayName: DAST
+
+  # 4. Production: one regional deploy with a progressive traffic shift, measured per country
+  - stage: Production
+    dependsOn: UAT
+    jobs:
+      - deployment: TrafficShift
+        environment: dc-prod
+        timeoutInMinutes: 360
+        pool: { vmImage: ubuntu-latest }
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                - script: ./ci/pact.sh can-i-deploy --to prod
+                  displayName: Contracts are compatible with production
+                - task: AzureCLI@2
+                  displayName: Deploy the new version with 0% of the traffic
+                  inputs:
+                    azureSubscription: sc-digital-channel-prod
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: ./ci/deploy.sh --runtime ${{ parameters.runtime }} --env prod --traffic 0
+            routeTraffic:
+              steps:
+                - checkout: self
+                # container: revision weights in Container Apps; mule: runtime or API Manager split, or blue-green (AS-16)
+                - ${{ each step in parameters.trafficSteps }}:
+                  - task: AzureCLI@2
+                    displayName: Move ${{ step }}% of the traffic to the new version
+                    inputs:
+                      azureSubscription: sc-digital-channel-prod
+                      scriptType: bash
+                      scriptLocation: inlineScript
+                      inlineScript: ./ci/shift-traffic.sh --runtime ${{ parameters.runtime }} --percent ${{ step }}
+                  - script: >
+                      ./ci/analyze-step.sh --countries $(targetCountries)
+                      --min-requests ${{ parameters.minRequestsPerStep }}
+                      --bad-ratio-max 7.2 --p95-ms-max 2500 --sf-calls-per-quote-max baseline+20%
+                    displayName: Check every country at ${{ step }}% (fast burn, p95, Salesforce calls per quote)
+            on:
+              failure:
+                steps:
+                  - checkout: self
+                  - task: AzureCLI@2
+                    displayName: Roll back, all traffic to the previous version in every country
+                    inputs:
+                      azureSubscription: sc-digital-channel-prod
+                      scriptType: bash
+                      scriptLocation: inlineScript
+                      inlineScript: ./ci/shift-traffic.sh --runtime ${{ parameters.runtime }} --percent 0
+              success:
+                steps:
+                  - checkout: self
+                  - script: ./ci/release-tag.sh --version $(Build.SourceVersion) --keep-previous-hours 24
+                    displayName: Tag the release and keep the previous version for 24 h
+
+  # 5. Release by country: the flags of this change are turned on one country at a time (TD-10, AS-17)
+  - ${{ if ne(length(parameters.countryFlags), 0) }}:
+    - ${{ each country in parameters.releaseOrder }}:
+      - ${{ if containsValue(parameters.countries, country) }}:
+        - stage: Release_${{ country }}
+          displayName: Release in ${{ country }}
+          jobs:
+            - deployment: FlagsOn
+              environment: dc-release-${{ lower(country) }}
+              pool: { vmImage: ubuntu-latest }
+              strategy:
+                runOnce:
+                  deploy:
+                    steps:
+                      - checkout: self
+                      - ${{ each flag in parameters.countryFlags }}:
+                        - script: ./ci/flag.sh --on --flag ${{ flag }} --country ${{ country }}
+                          displayName: Turn on ${{ flag }} in ${{ country }}
+            - job: Observe
+              dependsOn: FlagsOn
+              pool: server
+              timeoutInMinutes: 1500
+              steps:
+                - task: Delay@1
+                  inputs:
+                    delayForMinutes: ${{ parameters.releaseObserveMinutes }}
+            - job: CheckSlo
+              dependsOn: Observe
+              pool: { vmImage: ubuntu-latest }
+              steps:
+                - checkout: self
+                - script: ./ci/check-slo.sh --country ${{ country }} --window-minutes ${{ parameters.releaseObserveMinutes }}
+                  displayName: ${{ country }} kept its SLOs during the observation window
+            - job: FlagsOff
+              dependsOn: [FlagsOn, Observe, CheckSlo]
+              condition: failed()
+              pool: { vmImage: ubuntu-latest }
+              steps:
+                - checkout: self
+                - ${{ each flag in parameters.countryFlags }}:
+                  - script: ./ci/flag.sh --off --flag ${{ flag }} --country ${{ country }}
+                    displayName: Turn off ${{ flag }} in ${{ country }} only

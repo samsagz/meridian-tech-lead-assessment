@@ -27,7 +27,7 @@
 |---|---|---|---|
 | Complexity | One deployment per component; the isolation must be configured and tested | Three deployments per release; versions can differ between countries | Three codebases |
 | Cost | Lowest: one pool sized for the sum of the peaks | Minimum footprint × 3, mainly MuleSoft capacity | Highest in people: each feature three times |
-| Availability and isolation | Bulkheads per country inside each component. A bad release reaches the three countries; canary and automatic rollback contain it | Full isolation by construction | Full isolation |
+| Availability and isolation | Bulkheads per country inside each component. A bad release reaches the three countries; a progressive traffic shift with automatic rollback contains it | Full isolation by construction | Full isolation |
 | Security and privacy | One process serves three countries; data and secrets stay per country; needs a documented basis (AS-06) | Separation by construction | Separation by construction |
 | Fit with the team and the vendor | The pattern the team runs today for CO and CL. A Nimbus change to shared code reaches CO and CL | Nimbus can be limited to the MX deployment | Status quo; does not meet BR-01 |
 
@@ -45,13 +45,13 @@ Bulkheads in each shared component:
 - In-flight limit and queue per country in `quote-xapi` (A3), and a circuit breaker per country and route.
 - Client ID per country with its own rate limit in the API Manager, so we can limit or revoke one country alone.
 - Connection pool per country database.
-- Against a bad release: code review, tests for each country configuration, canary 5% → 25% → 100% with metrics per country, and automatic rollback (`SLOS.md` §5).
+- Against a bad release: code review, tests for each country configuration, progressive traffic shift 5% → 25% → 100% with metrics per country, and automatic rollback (`SLOS.md` §5).
 
 Home Essentials runs on this platform in MX from day 1. The current MX journeys stay on the Nimbus stack with two minimum changes (ADR-0002, A8), and then move one journey at a time.
 
 ## Trade-off analysis
 
-B gives the strongest isolation, but it triples the minimum footprint and the release work for about 500 quotes per day per country (15,000 ÷ 30, `BUSINESS_REQUESTS.md:15`). In INC-0907, CO and CL failed because the shared pool had no limit per country and the timeout was 30 s; bulkheads and shorter timeouts remove that cause. Bulkheads do not cover a bad release or a resource problem in the shared process; canary, rollback and the per-country flags cover it. We chose A because the team already operates it, it costs the least, and the code is the same in A and B, so a component can move to B later without a rewrite.
+B gives the strongest isolation, but it triples the minimum footprint and the release work for about 500 quotes per day per country (15,000 ÷ 30, `BUSINESS_REQUESTS.md:15`). In INC-0907, CO and CL failed because the shared pool had no limit per country and the timeout was 30 s; bulkheads and shorter timeouts remove that cause. Bulkheads do not cover a bad release or a resource problem in the shared process; the progressive traffic shift, the rollback and the per-country flags cover it. We chose A because the team already operates it, it costs the least, and the code is the same in A and B, so a component can move to B later without a rewrite.
 
 ## Consequences
 
