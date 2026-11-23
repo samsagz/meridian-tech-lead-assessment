@@ -12,8 +12,6 @@
 - The sponsor asks to build Home Essentials once for the three countries (`BUSINESS_REQUESTS.md:17`). The team estimates 45–55 person-weeks to build it once and 75–90 to build it in each current stack (`:23-24`).
 - CO and CL already share `web-quote-ui` and `channel-bff`, and `quote-xapi` is one deployment for the three countries (`CURRENT_STATE.md:60,63,65`). MX has its own stack, built by Nimbus.
 - In INC-0907, MX took 61–62 of the 64 slots of each `quote-xapi` replica (`quote-xapi.log:12-13`), and CO and CL received 503. The countries shared one in-flight limit and one queue, with a 30 s timeout and no circuit breaker (`CURRENT_STATE.md:75-76`).
-- C5: the personal data of one country must not be accessible to people or services of another country without a documented basis.
-- Nimbus works only for MX until the renewal on 31 Jan 2027 (C8).
 
 ## Decision drivers
 
@@ -41,7 +39,7 @@ Option A. MX joins the pattern that CO and CL already use.
 |---|---|---|
 | Components | `web-quote-ui`, `advisor-portal`, `channel-bff`, `quote-xapi`, consolidated quote Process API, CI/CD, observability | `sf-policy-sapi-{country}` and the org (Salesforce platform team) |
 | Data and secrets | — | PostgreSQL database, as today (`CURRENT_STATE.md:68-69`); Key Vault; API Manager client ID |
-| Country differences | Configuration per country (taxes, mandatory coverages, documents, consent texts, `SALESFORCE_CONSTRAINTS.md:8`), versioned and tested per country; feature flags per country (TD-10) | Country code only behind an extension point, in its own module with its own tests; no country conditionals in shared code (`CountryProperties.java:9-10`) |
+| Country differences | Configuration per country, versioned and tested per country; feature flags per country (TD-10) | Country code only behind an extension point, with its own tests (`ARCHITECTURE.md` §3) |
 
 Bulkheads in each shared component:
 - In-flight limit and queue per country in `quote-xapi` (A3), and a circuit breaker per country and route.

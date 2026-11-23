@@ -5,13 +5,13 @@
 | Status | Proposed |
 | Date | 2026-11-22 |
 | Deciders | Technical Lead (Direct Digital Channel), Salesforce platform team lead, Payments Integration lead, Architecture office |
-| Related | C1, C2, C4, C6; ADR-0001; `SLOS.md`; INC-0907 actions A1, A2, A8; AS-01 to AS-03 |
+| Related | C1, C2, C4, C6; ADR-0001; `SLOS.md`; INC-0907 actions A1, A2, A8; AS-01 to AS-03, AS-07 |
 
 ## Context
 
-- Every call to Salesforce must go through the integration platform and its API Manager (C4). Today `quote-papi-mx` and the issuance in `mx-quote-bff` call the MX org directly (`CURRENT_STATE.md:64,66`).
+- Today `quote-papi-mx` and the issuance in `mx-quote-bff` call the MX org directly, against C4 (`CURRENT_STATE.md:64,66`).
 - Each org is available ≈ 97% of the month (`SALESFORCE_CONSTRAINTS.md:15`): ≈ 21.6 h per month without the org (3% × 720 h), while C1 allows 3.6 h (0.5% × 720 h). If every quote needs the org, the quote journey cannot reach 99.5%.
-- Rating p95 is 1.1 s and issuance p95 is 4 s (`:16,18`). C2 asks for a quote in < 2.5 s at p95.
+- Rating p95 is 1.1 s and issuance p95 is 4 s (`:16,18`).
 - The channel has a daily budget per org (MX 250,000 calls) and must stay below 40 req/s (`:19,31`). With the table cache, a quote costs ≈ 1.3 calls; on 30 Sep, without it, MX made 6.24 calls per quote (`sf-api-usage-daily.csv:20`).
 - Tables are published at 05:00 UTC, and prices from tables up to 24 h old are valid if the quote shows the version (`SALESFORCE_CONSTRAINTS.md:24-25`).
 
@@ -44,14 +44,14 @@ Option B for Home Essentials. Option A for the current products until they adopt
 | Flow | Rule |
 |---|---|
 | Path | BFF → `quote-xapi` → consolidated quote Process API → `sf-policy-sapi-{country}` → org. `quote-papi-mx` moves to `sf-policy-sapi-mx` (A8), and `mx-quote-bff` issues policies through this path |
-| Table cache | In the Process API, in memory, loaded at start-up and after 05:00 UTC; each quote records the version (A1). Not in the System API, which belongs to the Salesforce platform team and must stay thin. Six tables per product do not need a distributed cache |
-| Home price grid | Computed in Salesforce after 05:00 UTC and exported by the System API in bulk calls (AS-01, AS-02). After 05:00 we do not serve the previous version. The grid loads in segments, the most frequent first (the capital city when there is no history), with a target of 06:00 UTC |
-| Live rating | For missing combinations and current products: one attempt with a ≈ 1.2 s timeout, no retry on timeout, at most one retry on fast failures, and a circuit breaker per country (A2). A retry after a timeout does not fit in C2: 1.2 s + 1.1 s = 2.3 s before the other hops. Each live price is kept in a read cache by answers and table version |
+| Table cache | In the Process API, in memory, loaded at start-up and after 05:00 UTC; each quote records the version (A1). Not in the System API, which belongs to the Salesforce platform team and must stay thin |
+| Home price grid | Computed in Salesforce after 05:00 UTC, exported by the System API in bulk calls (AS-01, AS-02) and kept in a store next to the Process API (AS-07). After 05:00 we do not serve the previous version. The grid loads in segments, the most frequent first (the capital city when there is no history), with a target of 06:00 UTC |
+| Live rating | For missing combinations and current products: one attempt with a ≈ 1.2 s timeout, no retry on timeout, at most one retry on fast failures, and a circuit breaker per country (A2). A retry after a timeout does not fit in C2: 1.2 s + 1.1 s = 2.3 s before the other hops. For Home Essentials, the live price is written into the grid |
 | Org down, no price | Fail fast, save the draft and offer to resume through Communications, with a legal basis or consent (C5) |
-| Purchase and issuance | While the org is up, we validate the issuance data before payment (AS-03); when it is down, we skip this check. Payment happens in the session. The payment event goes to an issuance queue per country, and issuance uses an idempotency key and backoff. A case not issued in 24 h goes to an exception queue with an owner, for manual issuance or refund |
+| Purchase and issuance | Payment in the session. While the org is up, we validate the issuance data before payment (AS-03); when it is down, we skip this check. Issuance is asynchronous, with a queue per country, an idempotency key and backoff (`ARCHITECTURE.md` §2). A case not issued in 24 h goes to an exception queue with an owner, for manual issuance or refund |
 | Consumption control | Rate limit per consumer and country at each System API, below 40 req/s; alerts in `SLOS.md` §4 |
 
-If the Salesforce platform team cannot commit to the grid before 15 Dec 2026, plan B of AS-02 applies. If the cell lacks capacity, we drop the load order first and the read cache second.
+If the Salesforce platform team cannot commit to the grid before 15 Dec 2026, plan B of AS-02 applies. If the cell lacks capacity, we drop the load order first, and second we stop writing live prices into the grid.
 
 ## Trade-off analysis
 
