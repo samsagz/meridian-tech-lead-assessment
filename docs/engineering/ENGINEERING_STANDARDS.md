@@ -45,7 +45,7 @@ flowchart TB
 | Coverage | ≥ 80% of new and changed lines; the total does not go down (TD-09) | PR | Merge blocked |
 | Mutation score | ≥ 60% on changed Java and TypeScript code | PR | Report only in Q1 2027; blocks from Q2 |
 | Static analysis | 0 new blocker or critical issues; the rules of `ARCHITECTURE.md` §8 and A2 | PR | Merge blocked |
-| Security scans | SAST: 0 new critical or high. Secrets: 0, also in a pre-commit hook. SCA, container and IaC: 0 critical; high fixed in 30 days | PR, build, nightly | Blocked. An exception needs the Security office and an end date; an exposed secret is rotated (TD-06, TD-11) |
+| Security scans | SAST: 0 new critical or high. Secrets: 0, also in a pre-commit hook. SCA, container and IaC: 0 critical; high fixed in 30 days. Licenses outside the allow-list: 0 (`AI_GUIDELINES.md` §4) | PR, build, nightly | Blocked. An exception needs the Security office and an end date; an exposed secret is rotated (TD-06, TD-11) |
 | API contract | 0 lint errors; no breaking change inside a major version (`REVIEW.md` #6); `can-i-deploy` passes | PR, each deploy | Blocked |
 | Performance | p95 < 2.5 s per country, errors < 0.5%, Salesforce calls per quote ≤ baseline + 20% (A1) | UAT | Production blocked; more calls need a new budget with the org (`INTERFACES_AND_GOVERNANCE.md`) |
 | Resilience and DAST | Fault injection passed for this change or in the last 7 nights; DAST 0 high | UAT | Production blocked |

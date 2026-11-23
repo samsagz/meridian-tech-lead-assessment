@@ -68,8 +68,8 @@ stages:
               continueOnError: ${{ not(parameters.enforceMutation) }}
           - script: ./ci/static-analysis.sh --new-blocker-max 0 --architecture-rules
             displayName: Static analysis and the rules of ARCHITECTURE.md §8
-          - script: ./ci/security-scan.sh --sast --sca --secrets
-            displayName: SAST, dependency and secret scanning
+          - script: ./ci/security-scan.sh --sast --sca --license-allowlist --secrets
+            displayName: SAST, dependency, license and secret scanning
           - script: ./ci/api-gate.sh --lint --breaking-against last-release
             displayName: OpenAPI lint and breaking-change check
           - script: ./ci/resilience-lint.sh
